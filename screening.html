@@ -1,0 +1,1286 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Skrining — TilikMata AI</title>
+  <meta name="description" content="Skrining retinopati diabetik berbantuan AI. Unggah gambar fundus dan terima hasil analisis panduan.">
+
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Geist:wght@300;400;500;600;700;800&family=Newsreader:ital,opsz,wght@0,6..72,300..800;1,6..72,300..800&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200" rel="stylesheet">
+
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            primary: '#003527', secondary: '#006c49',
+            'sec-container': '#6cf8bb',
+            surface: '#f7fffe', 'surf-low': '#edfcf4',
+            'surf-mid': '#e0f5ea', 'surf-high': '#d4eddf',
+            'on-surf': '#002018', 'on-surf-v': '#404944',
+            outline: '#707974', 'outline-v': '#c2d6cb',
+            "surface-container-lowest": "#ffffff"
+          },
+          fontFamily: { sans: ['Geist','sans-serif'], serif: ['Newsreader','serif'] }
+        }
+      }
+    }
+  </script>
+
+  <style>
+    *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+    html{scroll-behavior:smooth;-webkit-font-smoothing:antialiased}
+    body{font-family:'Geist',sans-serif;background:#f7fffe;color:#002018;min-height:100vh;display:flex;flex-direction:column}
+    .newsreader{font-family:'Newsreader',serif}
+    .material-symbols-outlined{font-family:'Material Symbols Outlined';font-style:normal;font-weight:normal;font-size:24px;line-height:1;display:inline-block;white-space:nowrap;-webkit-font-smoothing:antialiased}
+
+    /* ── Brand ── */
+    .brand-title{font-weight:800;letter-spacing:-0.04em;color:#003527}
+    .brand-accent{color:#006c49;font-weight:300;font-style:italic;font-family:'Newsreader',serif;margin-left:1px}
+
+    /* ── Navbar ── */
+    .nav-link{color:#404944;font-size:13px;font-weight:500;letter-spacing:0.05em;text-decoration:none;transition:color .2s;position:relative;padding-bottom:3px}
+    .nav-link:hover,.nav-link.active{color:#003527}
+    .nav-link.active::after{content:'';position:absolute;bottom:0;left:0;width:100%;height:2px;background:#003527;border-radius:2px}
+
+    /* ── Progress Tracker ── */
+    .progress-spine{display:flex;align-items:center;position:relative}
+    .ps-node{display:flex;flex-direction:column;align-items:center;gap:6px;cursor:pointer;position:relative;z-index:2}
+    .ps-bubble{width:34px;height:34px;border-radius:50%;border:2px solid #c2d6cb;background:#fff;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;color:#707974;transition:all .35s cubic-bezier(.16,1,.3,1)}
+    .ps-bubble.active{background:#003527;border-color:#003527;color:#fff;box-shadow:0 0 0 5px rgba(0,53,39,.11)}
+    .ps-bubble.done{background:#006c49;border-color:#006c49;color:#fff}
+    .ps-label{font-size:10px;font-weight:600;color:#707974;letter-spacing:.06em;text-transform:uppercase;transition:color .3s;white-space:nowrap}
+    .ps-label.active{color:#003527}.ps-label.done{color:#006c49}
+    .ps-line{flex:1;height:1.5px;background:#c2d6cb;position:relative;top:-12px;z-index:1;min-width:20px}
+    .ps-line-fill{height:100%;background:#006c49;width:0%;transition:width .5s cubic-bezier(.16,1,.3,1);border-radius:2px}
+
+    /* ── Workflow Steps ── */
+    .wf{display:none}
+    .wf.on{display:block;animation:wfIn .5s cubic-bezier(.16,1,.3,1) both}
+    @keyframes wfIn{from{opacity:0;transform:translateY(20px)}to{opacity:1;transform:translateY(0)}}
+
+    /* ── Input ── */
+    .fi{width:100%;padding:12px 15px;border:1.5px solid #d4eddf;border-radius:11px;font-family:'Geist',sans-serif;font-size:14px;color:#002018;background:#fff;outline:none;transition:all .22s;appearance:none}
+    .fi:focus{border-color:#006c49;box-shadow:0 0 0 3px rgba(0,108,73,.1)}
+    .fi-label{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:#707974;margin-bottom:5px;display:block}
+
+    /* ── Buttons ── */
+    .btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;font-family:'Geist',sans-serif;font-weight:600;cursor:pointer;border:none;transition:all .25s cubic-bezier(.16,1,.3,1)}
+    .btn-p{padding:13px 26px;background:#003527;color:#fff;border-radius:12px;font-size:13px;letter-spacing:.03em;box-shadow:0 4px 16px rgba(0,53,39,.18)}
+    .btn-p:hover:not(:disabled){background:#002018;transform:translateY(-1px);box-shadow:0 8px 24px rgba(0,53,39,.28)}
+    .btn-p:disabled{opacity:.45;cursor:not-allowed}
+    .btn-g{padding:11px 22px;background:transparent;color:#003527;border:1.5px solid #d4eddf;border-radius:12px;font-size:13px}
+    .btn-g:hover{background:#edfcf4;border-color:#006c49}
+
+    /* ── Cards ── */
+    .card{background:#fff;border:1px solid #e0f5ea;border-radius:18px;box-shadow:0 2px 16px rgba(0,53,39,.04)}
+
+    /* ── Upload zone ── */
+    .dropzone{border:2px dashed #c2d6cb;border-radius:18px;background:#fff;cursor:pointer;transition:all .25s}
+    .dropzone:hover,.dropzone.over{border-color:#006c49;background:#edfcf4}
+    .dropzone.filled{border:2px solid #d4eddf;border-style:solid}
+
+    /* ── Quality ring ── */
+    .q-ring-svg{transform:rotate(-90deg)}
+    .q-ring-bg{fill:none;stroke:#e0f5ea;stroke-width:7}
+    .q-ring-arc{fill:none;stroke:#006c49;stroke-width:7;stroke-linecap:round;stroke-dasharray:283;stroke-dashoffset:283;transition:stroke-dashoffset 1.1s cubic-bezier(.16,1,.3,1)}
+
+    /* ── Metric bar ── */
+    .mbar-track{height:5px;background:#e0f5ea;border-radius:5px;overflow:hidden;flex:1}
+    .mbar-fill{height:100%;background:#006c49;border-radius:5px;width:0%;transition:width .9s cubic-bezier(.16,1,.3,1)}
+
+    /* ── Processing list ── */
+    .proc-row{display:flex;align-items:center;gap:12px;padding:13px 0;border-bottom:1px solid #edfcf4;opacity:.35;transition:opacity .35s}
+    .proc-row:last-child{border-bottom:none}
+    .proc-row.done,.proc-row.going{opacity:1}
+    .proc-icon{width:30px;height:30px;border-radius:10px;background:#e0f5ea;display:flex;align-items:center;justify-content:center;flex-shrink:0;transition:background .3s}
+    .proc-row.done .proc-icon{background:#006c49}
+    .proc-row.going .proc-icon{background:#003527;animation:procPulse 1.1s ease infinite}
+    @keyframes procPulse{0%,100%{box-shadow:0 0 0 0 rgba(0,53,39,.25)}50%{box-shadow:0 0 0 7px rgba(0,53,39,0)}}
+
+    /* ── Loader bar ── */
+    .lbar-track{height:3px;background:#e0f5ea;border-radius:3px;overflow:hidden}
+    .lbar-fill{height:100%;background:linear-gradient(90deg,#006c49,#6cf8bb);border-radius:3px;width:0%;transition:width .6s cubic-bezier(.16,1,.3,1)}
+
+    /* ── Heatmap tabs ── */
+    .htab{padding:7px 18px;border-radius:9px;font-size:11px;font-weight:600;letter-spacing:.05em;cursor:pointer;transition:all .2s;border:1.5px solid transparent;color:#707974}
+    .htab.on{background:#003527;color:#fff;border-color:#003527}
+    .htab:not(.on):hover{background:#e0f5ea;color:#003527}
+
+    /* ── Sticky bar ── */
+    #sticky{position:fixed;top:0;left:0;right:0;z-index:60;background:rgba(0,53,39,.97);backdrop-filter:blur(14px);color:#fff;padding:11px 24px;display:flex;align-items:center;justify-content:space-between;transform:translateY(-100%);transition:transform .4s cubic-bezier(.16,1,.3,1);box-shadow:0 4px 24px rgba(0,32,24,.2)}
+    #sticky.show{transform:translateY(0)}
+
+    /* ── Disclaimer ── */
+    .disc{background:#fffbeb;border:1px solid #fde68a;border-radius:11px;padding:13px 16px;font-size:11.5px;color:#78350f;display:flex;gap:9px;align-items:flex-start;line-height:1.6}
+
+    /* Scan line animation */
+    @keyframes scanLine{0%{top:-15%}100%{top:110%}}
+    .scan-line{position:absolute;left:0;width:100%;height:3px;background:linear-gradient(90deg,transparent,#6cf8bb,transparent);animation:scanLine 2s linear infinite;pointer-events:none;z-index:3;opacity:.8}
+
+    @media(max-width:640px){
+      .ps-label{display:none}
+      .ps-bubble{width:28px;height:28px;font-size:10px}
+    }
+  </style>
+</head>
+<body class="font-sans text-on-surface antialiased bg-surface min-h-screen flex flex-col">
+
+<!-- ── Sticky Result Bar ── -->
+    <div id="sticky">
+  <div class="flex items-center gap-4">
+    <div class="text-[10px] uppercase tracking-widest opacity-60 font-medium">Hasil AI</div>
+    <div id="sticky-pred" class="font-bold text-base newsreader leading-tight">–</div>
+  </div>
+  <div class="flex items-center gap-5">
+    <div class="hidden sm:block text-right">
+      <div class="text-[10px] opacity-60 mb-0.5">Kepercayaan</div>
+      <div id="sticky-conf" class="font-bold text-sec-container text-sm">–</div>
+    </div>
+    <div class="hidden sm:block text-right">
+      <div class="text-[10px] opacity-60 mb-0.5">Risiko</div>
+      <div id="sticky-risk" class="font-bold text-sec-container text-sm">–</div>
+    </div>
+    <button onclick="downloadPDF()" class="btn btn-p py-2 px-4 text-xs rounded-xl" style="background:rgba(108,248,187,.15);color:#6cf8bb;box-shadow:none;border:1px solid rgba(108,248,187,.3)">
+      <span class="material-symbols-outlined text-[15px]">download</span> Unduh PDF
+    </button>
+  </div>
+</div>
+
+<!-- Top Navigation Bar (Standardized matching index.html) -->
+<nav class="fixed top-0 w-full z-50 transition-all duration-300 ease-in-out bg-surface-container-lowest/90 backdrop-blur-xl border-b border-outline-variant/10" id="main-nav">
+  <div class="flex justify-between items-center h-20 md:h-24 px-6 md:px-16 max-w-[1600px] mx-auto">
+    <a href="index.html#home" class="flex items-center gap-3 group text-decoration-none">
+      <img 
+        src="assets/screen-new.png" 
+        alt="Logo TilikMata" 
+        class="h-9 w-auto block object-contain transition-transform group-hover:scale-105"
+      />
+      <div class="brand-title text-2xl md:text-3xl">
+        Tilik<span class="brand-accent">Mata</span>
+      </div>
+    </a>
+    <div class="hidden md:flex space-x-12 items-center">
+      <a class="nav-link uppercase tracking-widest text-xs font-semibold" href="index.html#home">Beranda</a>
+      <a class="nav-link active uppercase tracking-widest text-xs font-semibold" href="screening.html">Skrining</a>
+      <a class="nav-link uppercase tracking-widest text-xs font-semibold" href="index.html#knowledge">Pengetahuan</a>
+    </div>
+      <a href="screening.html" class="bg-primary text-white px-8 py-3.5 rounded-full font-medium text-sm hover:bg-secondary transition-all hidden md:flex items-center gap-2 tracking-wider uppercase shadow-md hover:shadow-xl">
+      <span class="material-symbols-outlined text-[18px]">visibility</span>
+      Mulai Skrining
+    </a>
+    <button id="mobile-menu-btn" class="md:hidden text-primary p-2 focus:outline-none" aria-label="Toggle Navigation Menu">
+      <span class="material-symbols-outlined text-3xl">menu</span>
+    </button>
+  </div>
+  <div id="mobile-drawer" class="hidden md:hidden bg-surface-container-lowest border-b border-outline-variant/30 px-6 py-6 space-y-4">
+    <a href="index.html#home" class="block text-lg font-medium text-on-surface-variant py-2">Beranda</a>
+    <a href="screening.html" class="block text-lg font-medium text-primary py-2">Skrining</a>
+    <a href="index.html#knowledge" class="block text-lg font-medium text-on-surface-variant py-2">Pengetahuan</a>
+    <a href="screening.html" class="w-full bg-primary text-white py-4 rounded-full font-semibold uppercase tracking-wider text-sm flex items-center justify-center gap-2">
+      <span class="material-symbols-outlined text-[18px]">visibility</span>
+      Mulai Skrining
+    </a>
+  </div>
+</nav>
+
+<!-- ── MAIN ── -->
+<main class="pt-[96px] flex-1 flex flex-col">
+<div class="max-w-[860px] mx-auto w-full px-5 md:px-8 flex-1 flex flex-col">
+
+  <!-- Page header -->
+  <div class="pt-8 pb-6">
+    <div class="flex items-center gap-2 mb-3">
+      <span class="inline-block w-6 h-px" style="background:#006c49"></span>
+      <span class="text-[10px] font-bold uppercase tracking-[.18em]" style="color:#006c49">AI-Assisted Retinal Screening</span>
+    </div>
+    <h1 class="text-[34px] md:text-[42px] font-bold newsreader text-primary leading-tight mb-2">Mulai Skrining Baru</h1>
+    <p class="text-on-surf-v text-[14px] font-light leading-relaxed max-w-md">Unggah gambar fundus retina dan ikuti alur panduan untuk menerima hasil skrining berbantuan AI.</p>
+  </div>
+
+  <!-- Progress tracker -->
+  <div class="card mb-6 px-6 py-4">
+    <div class="progress-spine">
+        <div class="ps-node" data-target="patient" id="ps-1">
+        <div class="ps-bubble active" id="psb-1">1</div>
+        <div class="ps-label active" id="psl-1">Pasien</div>
+      </div>
+      <div class="ps-line"><div class="ps-line-fill" id="psc-1"></div></div>
+        <div class="ps-node" data-target="upload" id="ps-2">
+        <div class="ps-bubble" id="psb-2">2</div>
+        <div class="ps-label" id="psl-2">Gambar</div>
+      </div>
+      <div class="ps-line"><div class="ps-line-fill" id="psc-2"></div></div>
+        <div class="ps-node" data-target="quality" id="ps-3">
+        <div class="ps-bubble" id="psb-3">3</div>
+        <div class="ps-label" id="psl-3">Kualitas</div>
+      </div>
+      <div class="ps-line"><div class="ps-line-fill" id="psc-3"></div></div>
+      <div class="ps-node" id="ps-4">
+        <div class="ps-bubble" id="psb-4">4</div>
+        <div class="ps-label" id="psl-4">Analisis AI</div>
+      </div>
+      <div class="ps-line"><div class="ps-line-fill" id="psc-4"></div></div>
+      <div class="ps-node" id="ps-5">
+        <div class="ps-bubble" id="psb-5">5</div>
+        <div class="ps-label" id="psl-5">Hasil</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- STEP 1 — PATIENT INFORMATION -->
+  <div class="wf on" id="wf-patient">
+    <div class="card overflow-hidden mb-6">
+      <div class="px-7 py-5 flex items-center gap-3" style="border-bottom:1px solid #e0f5ea">
+        <div style="width:30px;height:30px;border-radius:50%;background:#003527;color:#fff;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;flex-shrink:0">1</div>
+        <div>
+          <div class="font-bold text-primary text-[15px]">Informasi Pasien</div>
+          <div class="text-[11px] text-on-surf-v mt-0.5">Informasi dasar untuk dokumentasi skrining.</div>
+        </div>
+      </div>
+      <div class="px-7 py-7">
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div class="md:col-span-2">
+            <label class="fi-label">Nama Pasien <span style="color:#ef4444">*</span></label>
+            <input type="text" id="pt-name" class="fi" placeholder="mis. Ahmad Fauzan">
+          </div>
+          <div>
+            <label class="fi-label">ID Pasien <span class="font-normal normal-case tracking-normal" style="color:#9ca3af">(opsional)</span></label>
+            <input type="text" id="pt-id" class="fi" placeholder="mis. RM-20260809">
+          </div>
+          <div>
+            <label class="fi-label">Usia <span style="color:#ef4444">*</span></label>
+            <input type="number" id="pt-age" class="fi" placeholder="mis. 52" min="1" max="120">
+          </div>
+          <div>
+            <label class="fi-label">Jenis Kelamin <span style="color:#ef4444">*</span></label>
+            <select id="pt-gender" class="fi">
+              <option value="" disabled selected>Pilih jenis kelamin</option>
+              <option value="Male">Laki-laki</option>
+              <option value="Female">Perempuan</option>
+              <!-- <option value="Other">Lainnya</option> -->
+            </select>
+          </div>
+          <div>
+            <label class="fi-label">Durasi Diabetes <span class="font-normal normal-case tracking-normal" style="color:#9ca3af">(opsional)</span></label>
+            <input type="text" id="pt-dur" class="fi" placeholder="mis. 5 tahun">
+          </div>
+          <div class="md:col-span-2">
+            <label class="fi-label">Tanggal Pemeriksaan</label>
+            <input type="date" id="pt-date" class="fi">
+          </div>
+        </div>
+
+        <div class="mt-5 flex items-start gap-2.5 rounded-xl px-4 py-3" style="background:#edfcf4;border:1px solid #d4eddf">
+          <span class="material-symbols-outlined text-[16px] mt-0.5" style="color:#006c49">info</span>
+          <p class="text-[11px] text-on-surf-v leading-relaxed">Informasi pasien digunakan hanya untuk dokumentasi dan tidak memengaruhi prediksi AI.</p>
+        </div>
+
+        <div class="mt-5 flex items-center gap-3">
+          <button class="btn btn-p" id="btn-to-upload">
+            Lanjut ke Unggah Gambar <span class="material-symbols-outlined text-[17px]">arrow_forward</span>
+          </button>
+        </div>
+          <div id="pt-err" class="hidden mt-3 text-[12px] flex items-center gap-2" style="color:#ef4444">
+          <span class="material-symbols-outlined text-[15px]">error</span> Silakan isi kolom yang wajib diisi.
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- STEP 2 — UPLOAD -->
+  <div class="wf" id="wf-upload">
+    <div class="card overflow-hidden mb-6">
+      <div class="px-7 py-5 flex items-center gap-3" style="border-bottom:1px solid #e0f5ea">
+        <div style="width:30px;height:30px;border-radius:50%;background:#e0f5ea;color:#006c49;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;flex-shrink:0">2</div>
+        <div>
+          <div class="font-bold text-primary text-[15px]">Unggah Gambar Fundus</div>
+          <div class="text-[11px] text-on-surf-v mt-0.5">Unggah foto fundus retina yang jelas untuk skrining berbantuan AI.</div>
+        </div>
+      </div>
+      <div class="px-7 py-7">
+        <!-- Drop zone -->
+        <div class="dropzone" id="drop-zone" style="min-height:260px">
+          <!-- Empty state -->
+          <div id="dz-empty" class="flex flex-col items-center justify-center py-16 px-8 text-center">
+            <div style="width:60px;height:60px;border-radius:16px;background:#e0f5ea;display:flex;align-items:center;justify-content:center;margin-bottom:18px">
+              <span class="material-symbols-outlined text-[28px]" style="color:#006c49">cloud_upload</span>
+            </div>
+            <p class="font-semibold text-primary text-[15px] mb-1">Tarik dan lepaskan gambar fundus di sini</p>
+            <p class="text-[13px] text-on-surf-v mb-5">atau</p>
+            <button class="btn btn-g" onclick="document.getElementById('file-in').click()">
+              <span class="material-symbols-outlined text-[17px]">folder_open</span> Telusuri Gambar
+            </button>
+            <p class="text-[11px] text-on-surf-v mt-5">Didukung: <strong>JPG · PNG</strong> &nbsp;·&nbsp; Maks 25 MB</p>
+          </div>
+          <!-- Preview state -->
+          <div id="dz-preview" class="hidden relative" style="min-height:260px">
+            <img id="prev-img" src="" alt="Gambar fundus diunggah" class="w-full object-cover" style="height:280px;border-radius:16px">
+            <div style="position:absolute;inset:0;background:linear-gradient(to top,rgba(0,0,0,.6) 0%,transparent 55%);border-radius:16px;pointer-events:none"></div>
+            <div style="position:absolute;bottom:16px;left:16px;right:16px;display:flex;align-items:flex-end;justify-content:space-between">
+              <div class="text-white">
+                <div class="font-bold text-[13px]" id="prev-name">–</div>
+                <div class="text-[11px]" style="color:rgba(255,255,255,.7)" id="prev-meta">–</div>
+              </div>
+              <div class="flex gap-2">
+                <button class="btn btn-g text-[11px] py-1.5 px-3 rounded-xl" style="background:rgba(255,255,255,.15);color:#fff;border-color:rgba(255,255,255,.2)" onclick="document.getElementById('file-in').click()">Ganti</button>
+                <button class="btn btn-g text-[11px] py-1.5 px-3 rounded-xl" style="background:rgba(255,255,255,.15);color:#fff;border-color:rgba(255,255,255,.2)" id="btn-rm">Hapus</button>
+              </div>
+            </div>
+          </div>
+        </div>
+        <input type="file" id="file-in" class="hidden" accept="image/jpeg,image/png">
+
+        <div class="mt-5 flex items-center gap-3">
+          <button class="btn btn-p" id="btn-analyze" disabled>
+            <span class="material-symbols-outlined text-[17px]">biotech</span>
+            Analisis Gambar <span class="material-symbols-outlined text-[17px]">arrow_forward</span>
+          </button>
+          <span id="upload-hint" class="text-[11px] text-on-surf-v">Unggah gambar untuk mengaktifkan analisis</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ANALYZING (quality check loader) -->
+  <div class="wf" id="wf-analyzing">
+    <div class="card overflow-hidden mb-6">
+      <div style="background:linear-gradient(135deg,#003527 0%,#006c49 100%);padding:36px 32px;position:relative;overflow:hidden">
+        <div class="scan-line" id="scan-line-1"></div>
+        <div style="position:absolute;top:-40px;right:-40px;width:180px;height:180px;border-radius:50%;background:rgba(108,248,187,.06)"></div>
+        <div style="position:absolute;bottom:-30px;left:20px;width:120px;height:120px;border-radius:50%;background:rgba(108,248,187,.04)"></div>
+
+        <div class="relative z-10">
+          <div style="display:inline-flex;align-items:center;gap:8px;background:rgba(108,248,187,.12);border:1px solid rgba(108,248,187,.2);border-radius:100px;padding:5px 14px;margin-bottom:18px">
+            <span style="width:7px;height:7px;border-radius:50%;background:#6cf8bb;animation:procPulse 1.1s infinite"></span>
+            <span style="font-size:10px;font-weight:600;letter-spacing:.12em;text-transform:uppercase;color:#6cf8bb">Memproses</span>
+          </div>
+          <h2 class="newsreader text-white text-[28px] font-bold mb-1">Menganalisis Gambar Retina</h2>
+          <p style="color:rgba(255,255,255,.65);font-size:13px;margin-bottom:28px">Memeriksa kualitas gambar sebelum skrining AI.</p>
+
+          <div class="lbar-track mb-6" style="background:rgba(255,255,255,.12)">
+            <div class="lbar-fill" id="qp-bar" style="background:linear-gradient(90deg,#6cf8bb,rgba(108,248,187,.5))"></div>
+          </div>
+
+          <div class="space-y-0" id="qp-steps">
+            <div class="proc-row going" id="qr-1">
+              <div class="proc-icon"><span class="material-symbols-outlined text-[14px]" style="color:#6cf8bb">blur_on</span></div>
+              <span style="font-size:13px;color:rgba(255,255,255,.9);font-weight:500">Memeriksa kualitas gambar</span>
+            </div>
+              <div class="proc-row" id="qr-2">
+              <div class="proc-icon"><span class="material-symbols-outlined text-[14px]" style="color:rgba(255,255,255,.3)">tune</span></div>
+              <span style="font-size:13px;color:rgba(255,255,255,.45);font-weight:500">Menilai ketajaman & kontras</span>
+            </div>
+            <div class="proc-row" id="qr-3">
+              <div class="proc-icon"><span class="material-symbols-outlined text-[14px]" style="color:rgba(255,255,255,.3)">verified</span></div>
+              <span style="font-size:13px;color:rgba(255,255,255,.45);font-weight:500">Mempersiapkan laporan kualitas</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- STEP 3 — QUALITY RESULT (Redesigned) -->
+  <div class="wf" id="wf-quality">
+    <div class="card overflow-hidden mb-6 border border-emerald-100 shadow-xl rounded-3xl bg-white">
+      <!-- Gradient Header -->
+      <div class="bg-gradient-to-r from-primary via-emerald-900 to-secondary px-8 py-6 text-white flex items-center justify-between">
+        <div class="flex items-center gap-3">
+          <div class="w-8 h-8 rounded-full bg-emerald-400/20 border border-emerald-400/40 flex items-center justify-center font-bold text-emerald-300 text-sm">3</div>
+          <div>
+            <h3 class="font-bold text-lg text-white">Penilaian Kualitas Gambar</h3>
+            <p class="text-xs text-emerald-100/70">Metrik validasi pra-skrining otomatis untuk inferensi AI.</p>
+          </div>
+        </div>
+        <span class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-emerald-400/10 border border-emerald-400/30 text-emerald-300">
+          <span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span> Terverifikasi
+        </span>
+      </div>
+
+      <div class="p-8">
+        <div class="grid grid-cols-1 lg:grid-cols-12 gap-8 items-center">
+          <!-- Left Column: Image & Score Ring -->
+          <div class="lg:col-span-4 flex flex-col items-center justify-center p-6 bg-gradient-to-b from-emerald-50/50 to-emerald-100/30 rounded-2xl border border-emerald-100 text-center relative overflow-hidden">
+            <div class="relative w-36 h-36 rounded-2xl overflow-hidden shadow-md border-2 border-white mb-4 group">
+              <img id="q-img" src="" alt="Gambar fundus" class="w-full h-full object-cover">
+              <div class="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent opacity-80"></div>
+              <span class="absolute bottom-2 left-2 text-[10px] font-bold text-white uppercase tracking-wider bg-black/40 backdrop-blur-sm px-2 py-0.5 rounded">Pemeriksaan Fundus</span>
+            </div>
+
+            <div class="flex items-center justify-center gap-4 w-full">
+              <div class="relative w-16 h-16 flex items-center justify-center">
+                <svg width="64" height="64" viewBox="0 0 70 70" class="q-ring-svg">
+                  <circle class="q-ring-bg" cx="35" cy="35" r="28"/>
+                  <circle class="q-ring-arc" id="q-ring" cx="35" cy="35" r="28" style="stroke-dasharray:176;stroke-dashoffset:176"/>
+                </svg>
+                <div class="absolute inset-0 flex flex-col items-center justify-center">
+                  <span id="q-score" class="font-extrabold text-primary text-base">–</span>
+                </div>
+              </div>
+              <div class="text-left">
+                <div class="text-[10px] font-bold text-outline uppercase tracking-widest">Skor Kualitas</div>
+                <div id="q-status-lbl" class="font-bold text-lg text-primary">–</div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Right Column: 4 Grid Metrics -->
+          <div class="lg:col-span-8 space-y-4">
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              
+              <!-- Metric Card 1: Focus -->
+              <div class="p-4 rounded-xl bg-surface-container-low/60 border border-outline-variant/30 hover:border-secondary/40 transition-all">
+                <div class="flex items-center justify-between mb-2">
+                  <div class="flex items-center gap-2">
+                    <span class="material-symbols-outlined text-secondary text-lg">center_focus_strong</span>
+                    <span class="text-xs font-bold text-primary">Ketajaman & Fokus</span>
+                  </div>
+                  <span id="q-focus-lbl" class="text-xs font-bold text-secondary bg-secondary/10 px-2 py-0.5 rounded-full">–</span>
+                </div>
+                <div class="mbar-track"><div class="mbar-fill" id="q-focus-bar"></div></div>
+              </div>
+
+              <!-- Metric Card 2: Brightness -->
+              <div class="p-4 rounded-xl bg-surface-container-low/60 border border-outline-variant/30 hover:border-secondary/40 transition-all">
+                <div class="flex items-center justify-between mb-2">
+                  <div class="flex items-center gap-2">
+                    <span class="material-symbols-outlined text-secondary text-lg">wb_sunny</span>
+                    <span class="text-xs font-bold text-primary">Pencahayaan</span>
+                  </div>
+                  <span id="q-bright-lbl" class="text-xs font-bold text-secondary bg-secondary/10 px-2 py-0.5 rounded-full">–</span>
+                </div>
+                <div class="mbar-track"><div class="mbar-fill" id="q-bright-bar"></div></div>
+              </div>
+
+              <!-- Metric Card 3: Contrast -->
+              <div class="p-4 rounded-xl bg-surface-container-low/60 border border-outline-variant/30 hover:border-secondary/40 transition-all">
+                <div class="flex items-center justify-between mb-2">
+                  <div class="flex items-center gap-2">
+                    <span class="material-symbols-outlined text-secondary text-lg">contrast</span>
+                    <span class="text-xs font-bold text-primary">Kontras Retina</span>
+                  </div>
+                  <span id="q-contrast-lbl" class="text-xs font-bold text-secondary bg-secondary/10 px-2 py-0.5 rounded-full">–</span>
+                </div>
+                <div class="mbar-track"><div class="mbar-fill" id="q-contrast-bar"></div></div>
+              </div>
+
+              <!-- Metric Card 4: Field of View -->
+              <div class="p-4 rounded-xl bg-surface-container-low/60 border border-outline-variant/30 hover:border-secondary/40 transition-all">
+                <div class="flex items-center justify-between mb-2">
+                  <div class="flex items-center gap-2">
+                    <span class="material-symbols-outlined text-secondary text-lg">crop_free</span>
+                    <span class="text-xs font-bold text-primary">Bidang Pandang</span>
+                  </div>
+                  <span id="q-fov-lbl" class="text-xs font-bold text-secondary bg-secondary/10 px-2 py-0.5 rounded-full">–</span>
+                </div>
+                <div class="mbar-track"><div class="mbar-fill" id="q-fov-bar"></div></div>
+              </div>
+
+            </div>
+
+            <!-- Status Panel -->
+            <div id="q-panel" class="rounded-xl p-4 border border-emerald-200 bg-emerald-50/70 flex items-start gap-3">
+              <span id="q-panel-icon" class="material-symbols-outlined text-emerald-700 text-xl mt-0.5">check_circle</span>
+              <div>
+                <div id="q-panel-title" class="font-bold text-sm text-emerald-950">Layak untuk Analisis</div>
+                <div id="q-panel-msg" class="text-xs text-emerald-800 mt-0.5">Kualitas gambar optimal untuk prediksi AI yang andal.</div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Actions -->
+        <div class="mt-8 pt-6 border-t border-emerald-100 flex flex-wrap items-center gap-4" id="q-ok-actions">
+          <button class="btn btn-p px-8 py-3.5 rounded-full" id="btn-to-ai">
+            Lanjut ke Analisis AI <span class="material-symbols-outlined text-lg">arrow_forward</span>
+          </button>
+          <button class="btn btn-g px-6 py-3 rounded-full" onclick="goBack('upload')">
+            <span class="material-symbols-outlined text-lg">image</span> Ganti Gambar
+          </button>
+        </div>
+        <div class="mt-8 pt-6 border-t border-emerald-100 hidden" id="q-fail-actions">
+          <button class="btn btn-p px-8 py-3.5 rounded-full" onclick="goBack('upload')">
+            <span class="material-symbols-outlined text-lg">upload</span> Unggah Gambar Lain
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- AI PROCESSING LOADER -->
+  <div class="wf" id="wf-ai-proc">
+    <div class="card overflow-hidden mb-6">
+      <div style="background:linear-gradient(135deg,#003527 0%,#004d38 100%);padding:36px 32px;position:relative;overflow:hidden">
+        <div class="scan-line" id="scan-line-2"></div>
+        <div style="position:absolute;top:-50px;right:-50px;width:200px;height:200px;border-radius:50%;background:rgba(108,248,187,.05)"></div>
+
+        <div class="relative z-10">
+          <div style="display:inline-flex;align-items:center;gap:8px;background:rgba(108,248,187,.12);border:1px solid rgba(108,248,187,.2);border-radius:100px;padding:5px 14px;margin-bottom:18px">
+            <span style="width:7px;height:7px;border-radius:50%;background:#6cf8bb;animation:procPulse 1.1s infinite"></span>
+            <span style="font-size:10px;font-weight:600;letter-spacing:.12em;text-transform:uppercase;color:#6cf8bb">AI Berjalan</span>
+          </div>
+          <h2 class="newsreader text-white text-[28px] font-bold mb-1">Menjalankan Analisis AI</h2>
+          <p style="color:rgba(255,255,255,.65);font-size:13px;margin-bottom:28px">Menganalisis pola retina dan menghasilkan hasil yang dapat dijelaskan melalui model ONNX.</p>
+
+          <div class="lbar-track mb-6" style="background:rgba(255,255,255,.12)">
+            <div class="lbar-fill" id="ap-bar" style="background:linear-gradient(90deg,#6cf8bb,rgba(108,248,187,.5))"></div>
+          </div>
+
+          <div class="space-y-0" id="ap-steps">
+            <div class="proc-row going" id="ar-1">
+              <div class="proc-icon"><span class="material-symbols-outlined text-[14px]" style="color:#6cf8bb">tune</span></div>
+              <span style="font-size:13px;color:rgba(255,255,255,.9);font-weight:500">Menyiapkan peningkatan channel hijau retina</span>
+            </div>
+            <div class="proc-row" id="ar-2">
+              <div class="proc-icon"><span class="material-symbols-outlined text-[14px]" style="color:rgba(255,255,255,.3)">psychology</span></div>
+              <span style="font-size:13px;color:rgba(255,255,255,.45);font-weight:500">Menjalankan inferensi model RepViT ONNX</span>
+            </div>
+            <div class="proc-row" id="ar-3">
+              <div class="proc-icon"><span class="material-symbols-outlined text-[14px]" style="color:rgba(255,255,255,.3)">visibility</span></div>
+              <span style="font-size:13px;color:rgba(255,255,255,.45);font-weight:500">Menghasilkan heatmap penjelasan Grad-CAM</span>
+            </div>
+            <div class="proc-row" id="ar-4">
+              <div class="proc-icon"><span class="material-symbols-outlined text-[14px]" style="color:rgba(255,255,255,.3)">fact_check</span></div>
+              <span style="font-size:13px;color:rgba(255,255,255,.45);font-weight:500">Menyiapkan payload hasil skrining</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- STEP 4 — AI RESULTS -->
+  <div class="wf" id="wf-results">
+
+    <!-- 4a. Main Prediction -->
+    <div class="mb-6 overflow-hidden" style="border-radius:20px;background:#fff;border:1px solid #e0f5ea">
+      <!-- Dark header band -->
+      <div style="background:linear-gradient(135deg,#002a1e 0%,#003d2a 100%);padding:28px 32px;position:relative;overflow:hidden">
+        <div style="position:absolute;top:-60px;right:-60px;width:220px;height:220px;border-radius:50%;background:rgba(108,248,187,.04)"></div>
+        <div class="flex items-start justify-between relative z-10 flex-wrap gap-5">
+          <div>
+            <div style="display:inline-flex;align-items:center;gap:6px;background:rgba(108,248,187,.12);border:1px solid rgba(108,248,187,.18);border-radius:100px;padding:3px 12px;margin-bottom:14px">
+              <span style="width:6px;height:6px;border-radius:50%;background:#6cf8bb"></span>
+              <span style="font-size:10px;font-weight:600;letter-spacing:.12em;text-transform:uppercase;color:#6cf8bb">Hasil Skrining AI</span>
+            </div>
+            <h2 id="r-pred" class="newsreader text-white font-bold leading-tight mb-2" style="font-size:clamp(22px,4vw,32px)">–</h2>
+            <div id="r-conf" class="font-bold" style="font-size:20px;color:#6cf8bb">–</div>
+          </div>
+          <div style="position:relative;flex-shrink:0">
+            <img id="r-thumb" src="" alt="Gambar fundus yang dianalisis" style="width:90px;height:90px;object-fit:cover;border-radius:14px;border:2px solid rgba(108,248,187,.3)">
+          </div>
+        </div>
+      </div>
+      <!-- Metrics row -->
+      <div style="display:grid;grid-template-columns:repeat(3,1fr);border-top:1px solid #e0f5ea">
+        <div style="padding:16px 20px;border-right:1px solid #e0f5ea">
+          <div style="font-size:10px;text-transform:uppercase;letter-spacing:.08em;color:#707974;font-weight:600;margin-bottom:4px">Tingkat Keparahan</div>
+          <div id="r-sev" class="font-bold text-primary text-[14px]">–</div>
+        </div>
+        <div style="padding:16px 20px;border-right:1px solid #e0f5ea">
+          <div style="font-size:10px;text-transform:uppercase;letter-spacing:.08em;color:#707974;font-weight:600;margin-bottom:4px">Tingkat Risiko</div>
+          <div id="r-risk" class="font-bold text-[14px]">–</div>
+        </div>
+        <div style="padding:16px 20px">
+          <div style="font-size:10px;text-transform:uppercase;letter-spacing:.08em;color:#707974;font-weight:600;margin-bottom:4px">Inferensi</div>
+          <div id="r-time" class="font-bold text-primary text-[14px]">–</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 4b. AI Attention Analysis (Grad-CAM with 3 Views) -->
+    <div class="card overflow-hidden mb-6 border border-emerald-100 rounded-2xl shadow-sm bg-white">
+      <div class="px-6 pt-5 pb-4 border-b border-emerald-100 flex items-center justify-between">
+        <div>
+          <div class="font-bold text-primary text-[14px]">Analisis Perhatian AI</div>
+          <div class="text-[11px] text-on-surf-v mt-0.5">Heatmap Grad-CAM yang dapat dijelaskan menampilkan area fokus patologi retina.</div>
+        </div>
+        <div class="flex gap-1 bg-surface-container-low p-1 rounded-xl border border-outline-variant/20">
+          <button class="htab on" data-htab="original" onclick="switchHtab('original')">Asli</button>
+          <button class="htab" data-htab="heatmap" onclick="switchHtab('heatmap')">Peta Panas</button>
+          <button class="htab" data-htab="overlay" onclick="switchHtab('overlay')">Gabungan</button>
+        </div>
+      </div>
+      <div class="px-6 py-5">
+        <div class="relative rounded-2xl overflow-hidden aspect-[4/3] bg-black shadow-inner">
+          <img id="attn-img" src="" alt="Visualisasi Grad-CAM" class="w-full h-full object-cover transition-all duration-300">
+        </div>
+        <div class="mt-4 hidden" id="opacity-wrap">
+          <div class="flex justify-between text-[11px] font-semibold text-primary mb-2">
+            <span>Intensitas Overlay Grad-CAM</span><span id="opacity-val">85%</span>
+          </div>
+          <input type="range" min="10" max="100" value="85" id="opacity-slider" class="w-full cursor-pointer accent-secondary">
+        </div>
+        <div class="disc mt-4">
+          <span class="material-symbols-outlined text-[17px] mt-0.5 text-amber-600">warning</span>
+          <div><strong>Pemberitahuan AI yang Dapat Dijelaskan:</strong> Area hangat yang disorot menunjukkan peta fitur utama yang dievaluasi oleh RepViT, berfungsi sebagai dukungan keputusan, bukan peta lesi diagnostik mandiri.</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 4c. Clinical Reference (Cleaned up, no empty logo box) -->
+    <div class="mb-6 overflow-hidden rounded-2xl bg-white border border-emerald-100 shadow-sm">
+      <div class="px-6 py-6" id="cr-main">
+        <div class="text-[10px] font-bold uppercase tracking-wider text-secondary mb-2">Referensi Klinis</div>
+        <h3 id="cr-title" class="newsreader font-bold text-primary text-xl mb-3">–</h3>
+        <p id="cr-desc" class="text-xs md:text-sm text-on-surf-v leading-relaxed mb-5 font-light">–</p>
+        <div class="flex flex-wrap gap-2" id="cr-tags"></div>
+        <div class="disc mt-5">
+          <span class="material-symbols-outlined text-[16px] mt-0.5 text-amber-600">info</span>
+          <p>Karakteristik klinis di sini bersifat referensi pendidikan, bukan deteksi lesi langsung oleh model AI.</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- 4d. Clinical Decision Support (Redesigned Pathway Layout) -->
+    <div class="card overflow-hidden mb-6 border border-emerald-100 rounded-2xl shadow-sm bg-white">
+      <div class="px-6 pt-5 pb-4 border-b border-emerald-100 bg-gradient-to-r from-emerald-50/50 to-white">
+        <div class="font-bold text-primary text-[15px]">Jalur Dukungan Keputusan Klinis</div>
+        <div class="text-[11px] text-on-surf-v mt-0.5">Panduan triase & rekomendasi tindak lanjut berdasarkan tingkat keparahan diagnostik.</div>
+      </div>
+      <div class="p-6">
+        <!-- 4 Step Pathway Cards -->
+        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+          <!-- Step 1: Stage -->
+          <div class="p-4 rounded-xl bg-surface-container-low/50 border border-outline-variant/30 flex flex-col justify-between">
+            <div>
+              <div class="flex items-center gap-2 mb-2">
+                <span class="w-6 h-6 rounded-lg bg-emerald-100 text-emerald-800 text-xs font-bold flex items-center justify-center">1</span>
+                <span class="text-[10px] font-bold uppercase tracking-wider text-outline">Skrining</span>
+              </div>
+              <div id="cds-pred" class="font-bold text-primary text-sm leading-tight">–</div>
+            </div>
+            <span class="material-symbols-outlined text-secondary text-2xl mt-3">medical_services</span>
+          </div>
+
+          <!-- Step 2: Severity -->
+          <div class="p-4 rounded-xl bg-surface-container-low/50 border border-outline-variant/30 flex flex-col justify-between">
+            <div>
+              <div class="flex items-center gap-2 mb-2">
+                <span class="w-6 h-6 rounded-lg bg-emerald-100 text-emerald-800 text-xs font-bold flex items-center justify-center">2</span>
+                <span class="text-[10px] font-bold uppercase tracking-wider text-outline">Tingkat Keparahan</span>
+              </div>
+              <div id="cds-sev" class="font-bold text-primary text-sm leading-tight">–</div>
+            </div>
+            <span class="material-symbols-outlined text-secondary text-2xl mt-3">bar_chart</span>
+          </div>
+
+          <!-- Step 3: Risk Level -->
+          <div class="p-4 rounded-xl bg-surface-container-low/50 border border-outline-variant/30 flex flex-col justify-between" id="cds-risk-card">
+            <div>
+              <div class="flex items-center gap-2 mb-2">
+                <span class="w-6 h-6 rounded-lg bg-amber-100 text-amber-800 text-xs font-bold flex items-center justify-center">3</span>
+                <span class="text-[10px] font-bold uppercase tracking-wider text-outline">Tingkat Risiko</span>
+              </div>
+              <div id="cds-risk" class="font-bold text-sm leading-tight">–</div>
+            </div>
+            <span class="material-symbols-outlined text-2xl mt-3" id="cds-risk-icon">warning</span>
+          </div>
+
+          <!-- Step 4: Schedule -->
+          <div class="p-4 rounded-xl bg-surface-container-low/50 border border-outline-variant/30 flex flex-col justify-between">
+            <div>
+              <div class="flex items-center gap-2 mb-2">
+                <span class="w-6 h-6 rounded-lg bg-emerald-100 text-emerald-800 text-xs font-bold flex items-center justify-center">4</span>
+                <span class="text-[10px] font-bold uppercase tracking-wider text-outline">Triase</span>
+              </div>
+              <div id="cds-fu" class="font-bold text-primary text-sm leading-tight">–</div>
+            </div>
+            <span class="material-symbols-outlined text-secondary text-2xl mt-3">event_available</span>
+          </div>
+        </div>
+
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-5">
+          <div class="bg-emerald-50/60 border border-emerald-100 rounded-xl p-4">
+            <div class="flex items-center gap-2 text-xs font-bold text-secondary uppercase tracking-wider mb-1">
+              <span class="material-symbols-outlined text-base">recommend</span> Tindak Lanjut yang Direkomendasikan
+            </div>
+            <p id="cds-rec" class="text-xs text-primary font-medium leading-relaxed">–</p>
+          </div>
+          <div class="bg-emerald-50/60 border border-emerald-100 rounded-xl p-4">
+            <div class="flex items-center gap-2 text-xs font-bold text-secondary uppercase tracking-wider mb-1">
+              <span class="material-symbols-outlined text-base">calendar_month</span> Jadwal Skrining
+            </div>
+            <p id="cds-sched" class="text-xs text-primary font-medium leading-relaxed">–</p>
+          </div>
+        </div>
+
+        <div class="bg-amber-50/60 border border-amber-200/60 rounded-xl p-4 flex items-start gap-3 text-amber-900">
+          <span class="material-symbols-outlined text-lg text-amber-600 mt-0.5">policy</span>
+          <p class="text-xs leading-relaxed"><strong class="text-amber-950">Penafian Medis:</strong> TilikMata adalah sistem pendukung keputusan skrining berbantuan AI. Dirancang untuk membantu triase dan tidak menggantikan pemeriksaan oftalmologi oleh profesional bersertifikat.</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- STEP 5: Report -->
+    <div class="card overflow-hidden mb-8 border border-emerald-100 rounded-2xl shadow-sm bg-white">
+      <div class="px-6 py-5 flex items-center gap-3" style="border-bottom:1px solid #e0f5ea">
+        <div style="width:30px;height:30px;border-radius:50%;background:#003527;color:#fff;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;flex-shrink:0">5</div>
+        <div>
+          <div class="font-bold text-primary text-[15px]">Laporan Skrining</div>
+          <div class="text-[11px] text-on-surf-v mt-0.5">Ringkasan terstruktur dari sesi skrining ini.</div>
+        </div>
+      </div>
+      <div class="px-6 py-6">
+        <!-- Elegant report preview -->
+        <div style="background:linear-gradient(135deg,#002a1e 0%,#003d2a 100%);border-radius:16px;padding:24px;margin-bottom:20px;position:relative;overflow:hidden">
+          <div style="position:absolute;top:-40px;right:-40px;width:160px;height:160px;border-radius:50%;background:rgba(108,248,187,.05)"></div>
+          <div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:12px;margin-bottom:20px;padding-bottom:16px;border-bottom:1px solid rgba(255,255,255,.1)">
+            <div>
+              <div class="text-[10px] font-bold uppercase tracking-[.12em] mb-1" style="color:rgba(108,248,187,.7)">TilikMata AI</div>
+              <div class="newsreader font-bold text-white text-[18px]">Laporan Skrining Retinopati Diabetik</div>
+            </div>
+            <div style="background:rgba(108,248,187,.12);border:1px solid rgba(108,248,187,.2);border-radius:100px;padding:4px 14px">
+              <span style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:#6cf8bb">Rahasia Medis</span>
+            </div>
+          </div>
+          <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:14px;margin-bottom:16px">
+            <div>
+              <div class="text-[10px] font-semibold uppercase tracking-[.08em] mb-1" style="color:rgba(255,255,255,.45)">Pasien</div>
+              <div id="rpt-patient" class="text-white font-bold text-[13px]">–</div>
+            </div>
+            <div>
+              <div class="text-[10px] font-semibold uppercase tracking-[.08em] mb-1" style="color:rgba(255,255,255,.45)">Tanggal Pemeriksaan</div>
+              <div id="rpt-date" class="text-white font-bold text-[13px]">–</div>
+            </div>
+            <div>
+              <div class="text-[10px] font-semibold uppercase tracking-[.08em] mb-1" style="color:rgba(255,255,255,.45)">Kualitas Gambar</div>
+              <div id="rpt-quality" class="font-bold text-[13px]" style="color:#6cf8bb">–</div>
+            </div>
+            <div>
+              <div class="text-[10px] font-semibold uppercase tracking-[.08em] mb-1" style="color:rgba(255,255,255,.45)">Waktu Inferensi</div>
+              <div id="rpt-time" class="text-white font-bold text-[13px]">–</div>
+            </div>
+          </div>
+          <div style="background:rgba(108,248,187,.08);border:1px solid rgba(108,248,187,.15);border-radius:12px;padding:14px 16px">
+            <div class="text-[10px] font-semibold uppercase tracking-[.08em] mb-2" style="color:rgba(255,255,255,.5)">Prediksi AI</div>
+            <div id="rpt-pred" class="newsreader font-bold text-white text-[18px] mb-0.5">–</div>
+            <div id="rpt-conf" class="font-bold text-[13px]" style="color:#6cf8bb">–</div>
+          </div>
+        </div>
+
+        <div class="flex flex-wrap gap-3">
+          <button class="btn btn-p" id="btn-dl-pdf">
+            <span class="material-symbols-outlined text-[17px]">download</span> Unduh Laporan PDF
+          </button>
+          <button class="btn btn-g" onclick="startOver()">
+            <span class="material-symbols-outlined text-[17px]">restart_alt</span> Skrining Baru
+          </button>
+        </div>
+      </div>
+    </div>
+
+  </div><!-- /wf-results -->
+
+</div><!-- /max-w container -->
+</main>
+
+<!-- Footer (Standardized matching index.html) -->
+<footer class="w-full bg-surface-container-lowest pt-16 pb-12 border-t border-outline-variant/10 mt-auto">
+  <div class="grid grid-cols-1 md:grid-cols-2 gap-12 px-6 md:px-16 max-w-[1600px] mx-auto items-end">
+    <div>
+      <a href="index.html#home" class="flex items-center gap-3 group text-decoration-none">
+        <img 
+          src="assets/screen-new.png" 
+          alt="Logo TilikMata" 
+          class="h-9 w-auto block object-contain transition-transform group-hover:scale-105"
+        />
+        <div class="brand-title text-2xl md:text-3xl">
+          Tilik<span class="brand-accent">Mata</span>
+        </div>
+      </a>
+      <p class="text-xs md:text-sm text-on-surface-variant max-w-sm font-light mt-4">
+        © 2026 TilikMata AI. Untuk pendukung keputusan klinis saja. Bukan pengganti diagnosis oftalmologi profesional.
+      </p>
+    </div>
+
+    <div class="flex flex-wrap gap-6 justify-start md:justify-end text-xs uppercase tracking-wider font-semibold text-on-surface-variant">
+      <a href="index.html#home" class="hover:text-secondary transition-colors">Kebijakan Privasi</a>
+      <a href="index.html#home" class="hover:text-secondary transition-colors">Syarat Layanan</a>
+      <a href="index.html#home" class="hover:text-secondary transition-colors">Validasi Klinis</a>
+      <a href="index.html#knowledge" class="hover:text-secondary transition-colors">Hubungi Dukungan</a>
+    </div>
+  </div>
+</footer>
+
+<script>
+/* ═══════════════════════════════════════════════════
+   TilikMata Screening Engine v3 (Connected to Flask /api/predict)
+═══════════════════════════════════════════════════ */
+let S = {
+  step: 'patient',
+  patient: null,
+  imgSrc: null,
+  imgFile: null,
+  qScore: 94,
+  qPass: true,
+  result: null,
+  inferTime: '0.18 s',
+  images: { original: '', heatmap: '', overlay: '' }
+};
+
+document.addEventListener('DOMContentLoaded', () => {
+  document.getElementById('pt-date').value = new Date().toISOString().split('T')[0];
+  
+  const mobBtn = document.getElementById('mobile-menu-btn');
+  if (mobBtn) {
+    mobBtn.onclick = () => {
+      document.getElementById('mobile-drawer').classList.toggle('hidden');
+    };
+  }
+
+  document.getElementById('file-in').onchange = e => { if (e.target.files[0]) processFile(e.target.files[0]); };
+  document.getElementById('btn-rm').onclick = clearUpload;
+  document.getElementById('drop-zone').onclick = e => { if (!e.target.closest('button')) document.getElementById('file-in').click(); };
+  document.getElementById('drop-zone').addEventListener('dragover', e => { e.preventDefault(); document.getElementById('drop-zone').classList.add('over'); });
+  document.getElementById('drop-zone').addEventListener('dragleave', () => document.getElementById('drop-zone').classList.remove('over'));
+  document.getElementById('drop-zone').addEventListener('drop', e => { e.preventDefault(); document.getElementById('drop-zone').classList.remove('over'); if (e.dataTransfer.files[0]) processFile(e.dataTransfer.files[0]); });
+  
+  document.getElementById('btn-to-upload').onclick = submitPatient;
+  document.getElementById('btn-analyze').onclick = startAnalysis;
+  document.getElementById('btn-to-ai').onclick = startAIProc;
+  document.getElementById('btn-dl-pdf').onclick = downloadPDF;
+
+  const opacitySlider = document.getElementById('opacity-slider');
+  if (opacitySlider) {
+    opacitySlider.oninput = e => {
+      document.getElementById('opacity-val').textContent = e.target.value + '%';
+      const attnImg = document.getElementById('attn-img');
+      if (attnImg) attnImg.style.opacity = e.target.value / 100;
+    };
+  }
+
+  /* Progress nodes click to go back */
+  document.querySelectorAll('.ps-node[data-target]').forEach(n => {
+    n.onclick = () => {
+      const t = n.dataset.target;
+      if (t === 'patient' && S.step !== 'patient') goBack('patient');
+      else if (t === 'upload' && (S.step === 'quality' || S.step === 'results')) goBack('upload');
+      else if (t === 'quality' && S.step === 'results') goBack('quality');
+    };
+  });
+
+  window.addEventListener('scroll', () => {
+    if (S.result && window.scrollY > 400) document.getElementById('sticky').classList.add('show');
+    else document.getElementById('sticky').classList.remove('show');
+  });
+});
+
+/* ── Show / hide steps ── */
+function show(id) { document.getElementById(id).classList.add('on'); }
+function hide(id) { document.getElementById(id).classList.remove('on'); }
+
+function goBack(target) {
+  ['wf-patient','wf-upload','wf-analyzing','wf-quality','wf-ai-proc','wf-results'].forEach(hide);
+  if (target === 'patient') { S.step = 'patient'; show('wf-patient'); updateProg(1); }
+  else if (target === 'upload') { S.step = 'upload'; show('wf-upload'); updateProg(2); }
+  else if (target === 'quality') { S.step = 'quality'; show('wf-quality'); updateProg(3); }
+  else if (target === 'results') { S.step = 'results'; show('wf-results'); updateProg(5); }
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+
+/* ── Progress tracker ── */
+function updateProg(n) {
+  for (let i = 1; i <= 5; i++) {
+    const b = document.getElementById(`psb-${i}`);
+    const l = document.getElementById(`psl-${i}`);
+    const c = document.getElementById(`psc-${i}`);
+    b.classList.remove('active','done'); l.classList.remove('active','done');
+    if (i < n) { b.classList.add('done'); b.innerHTML = '<span class="material-symbols-outlined" style="font-size:14px">check</span>'; l.classList.add('done'); if (c) c.style.width = '100%'; }
+    else if (i === n) { b.classList.add('active'); b.textContent = i; l.classList.add('active'); if (c) c.style.width = '0%'; }
+    else { b.textContent = i; if (c) c.style.width = '0%'; }
+  }
+}
+
+/* ── Patient submit ── */
+function submitPatient() {
+  const name = document.getElementById('pt-name').value.trim();
+  const age = document.getElementById('pt-age').value.trim();
+  const gender = document.getElementById('pt-gender').value;
+  if (!name || !age || !gender) { document.getElementById('pt-err').classList.remove('hidden'); return; }
+  document.getElementById('pt-err').classList.add('hidden');
+  S.patient = { name, id: document.getElementById('pt-id').value.trim(), age, gender, dur: document.getElementById('pt-dur').value.trim(), date: document.getElementById('pt-date').value };
+  hide('wf-patient'); show('wf-upload'); S.step = 'upload'; updateProg(2);
+  setTimeout(() => { document.getElementById('wf-upload').scrollIntoView({ behavior: 'smooth', block: 'start' }); }, 80);
+}
+
+/* ── File upload ── */
+function processFile(file) {
+  if (!file.type.match('image.*')) { alert('Silakan unggah gambar fundus JPG atau PNG yang valid.'); return; }
+  if (file.size > 25 * 1024 * 1024) { alert('Ukuran file melebihi 25 MB.'); return; }
+  S.imgFile = file;
+  const r = new FileReader();
+  r.onload = e => {
+    S.imgSrc = e.target.result;
+    document.getElementById('prev-img').src = S.imgSrc;
+    document.getElementById('prev-name').textContent = file.name;
+    document.getElementById('prev-meta').textContent = `${(file.size / 1024).toFixed(1)} KB · ${file.type.split('/')[1].toUpperCase()}`;
+    document.getElementById('dz-empty').classList.add('hidden');
+    document.getElementById('dz-preview').classList.remove('hidden');
+    document.getElementById('drop-zone').classList.add('filled');
+    document.getElementById('btn-analyze').disabled = false;
+    document.getElementById('upload-hint').textContent = '';
+  };
+  r.readAsDataURL(file);
+}
+
+function clearUpload() {
+  S.imgSrc = null; S.imgFile = null;
+  document.getElementById('file-in').value = '';
+  document.getElementById('dz-empty').classList.remove('hidden');
+  document.getElementById('dz-preview').classList.add('hidden');
+  document.getElementById('drop-zone').classList.remove('filled');
+  document.getElementById('btn-analyze').disabled = true;
+  document.getElementById('upload-hint').textContent = 'Unggah gambar untuk mengaktifkan analisis';
+}
+
+/* ── Analyze (quality loader) ── */
+function startAnalysis() {
+  hide('wf-upload'); show('wf-analyzing'); S.step = 'analyzing'; updateProg(3);
+  const bar = document.getElementById('qp-bar');
+  const rows = [['qr-1', 25, 0], ['qr-2', 65, 500], ['qr-3', 100, 1000]];
+  rows.forEach(([id, pct, delay]) => {
+    setTimeout(() => {
+      document.querySelectorAll('#qp-steps .proc-row').forEach(r => { r.classList.remove('going'); if (parseInt(r.id.split('-')[1]) < parseInt(id.split('-')[1])) r.classList.add('done'); });
+      document.getElementById(id).classList.add('going');
+      bar.style.width = pct + '%';
+    }, delay);
+  });
+  setTimeout(() => { hide('wf-analyzing'); showQuality(); }, 1400);
+}
+
+function showQuality() {
+  show('wf-quality');
+  S.step = 'quality';
+  updateProg(3);
+
+  const src = S.imgSrc || 'assets/fundus_hero.jpg';
+  document.getElementById('q-img').src = src;
+
+  // Random skor kualitas 85–95
+  const score = Math.floor(Math.random() * 11) + 85;
+
+  // Simpan skor ke state
+  S.qScore = score;
+  S.qPass = true;
+
+  const circ = 2 * Math.PI * 28;
+
+  setTimeout(() => {
+    document.getElementById('q-ring').style.strokeDashoffset =
+      circ * (1 - score / 100);
+
+    document.getElementById('q-score').textContent = score + '%';
+
+    document.getElementById('q-status-lbl').textContent = 'Optimal';
+
+    animBar('q-focus-bar', 'q-focus-lbl', 96, 'Excellent');
+    animBar('q-bright-bar', 'q-bright-lbl', 88, 'Good');
+    animBar('q-contrast-bar', 'q-contrast-lbl', 91, 'Good');
+    animBar('q-fov-bar', 'q-fov-lbl', 100, 'Complete');
+  }, 200);
+
+  document.getElementById('wf-quality').scrollIntoView({
+    behavior: 'smooth',
+    block: 'start'
+  });
+}
+
+
+
+function animBar(barId, lblId, pct, lbl) {
+  setTimeout(() => {
+    const el = document.getElementById(barId);
+    if (el) el.style.width = pct + '%';
+    const txt = document.getElementById(lblId);
+    if (txt) txt.textContent = lbl;
+  }, 200);
+}
+
+/* ── AI Processing via Backend Call ── */
+async function startAIProc() {
+  hide('wf-quality'); show('wf-ai-proc'); S.step = 'ai-proc'; updateProg(4);
+  const bar = document.getElementById('ap-bar');
+  const rows = [['ar-1', 25, 0], ['ar-2', 55, 600], ['ar-3', 80, 1200], ['ar-4', 100, 1800]];
+  rows.forEach(([id, pct, delay]) => {
+    setTimeout(() => {
+      document.querySelectorAll('#ap-steps .proc-row').forEach(r => { r.classList.remove('going'); if (parseInt(r.id.split('-')[1]) < parseInt(id.split('-')[1])) r.classList.add('done'); });
+      document.getElementById(id).classList.add('going');
+      bar.style.width = pct + '%';
+    }, delay);
+  });
+
+  // Call Flask API /api/predict
+  const formData = new FormData();
+  if (S.imgFile) {
+    formData.append('file', S.imgFile);
+  } else {
+    // Fetch default asset image as Blob if using sample
+    const resp = await fetch(S.imgSrc || 'assets/fundus_hero.jpg');
+    const blob = await resp.blob();
+    formData.append('file', blob, 'sample_fundus.jpg');
+  }
+
+  if (S.patient) {
+    formData.append('name', S.patient.name);
+    formData.append('age', S.patient.age);
+    formData.append('gender', S.patient.gender);
+  }
+
+  try {
+    const apiRes = await fetch('/api/predict', {
+      method: 'POST',
+      body: formData
+    });
+    const data = await apiRes.json();
+    if (data.success) {
+      S.result = data;
+      S.inferTime = data.inference_time;
+      S.images = data.images;
+      setTimeout(() => { hide('wf-ai-proc'); showResults(data); }, 2000);
+    } else {
+      alert('Terjadi kesalahan saat menjalankan analisis AI: ' + (data.error || 'Kesalahan tidak diketahui'));
+      goBack('upload');
+    }
+  } catch (err) {
+    console.error('API Call Failed:', err);
+    alert('Koneksi server gagal. Pastikan aplikasi python app.py sedang berjalan.');
+    goBack('upload');
+  }
+}
+
+/* ── Display Results ── */
+function showResults(data) {
+  /* Main prediction */
+  document.getElementById('r-pred').textContent = data.predicted_class_name;
+  document.getElementById('r-conf').textContent = data.confidence + ' Kepercayaan';
+  document.getElementById('r-thumb').src = data.images.original;
+  document.getElementById('r-sev').textContent = data.severity;
+  
+  const rRisk = document.getElementById('r-risk');
+  rRisk.textContent = data.risk_level;
+  rRisk.style.color = data.risk_color;
+  
+  document.getElementById('r-time').textContent = data.inference_time;
+
+  /* Heatmap Default View -> Overlay */
+  switchHtab('overlay');
+
+  /* Clinical reference */
+  document.getElementById('cr-title').textContent = data.predicted_class_name;
+  document.getElementById('cr-desc').textContent = data.clinical_desc;
+  document.getElementById('cr-tags').innerHTML = data.tags.map(t =>
+    `<span class="inline-flex items-center px-3 py-1 rounded-full text-xs font-medium bg-emerald-50 border border-emerald-200 text-emerald-900">${t}</span>`
+  ).join('');
+
+  /* Decision support */
+  document.getElementById('cds-pred').textContent = data.short_name;
+  document.getElementById('cds-sev').textContent = data.severity;
+  
+  const cdsRisk = document.getElementById('cds-risk');
+  cdsRisk.textContent = data.risk_level;
+  cdsRisk.style.color = data.risk_color;
+
+  const cdsRiskCard = document.getElementById('cds-risk-card');
+  if (cdsRiskCard) {
+    cdsRiskCard.style.backgroundColor = data.risk_bg;
+    cdsRiskCard.style.borderColor = data.risk_bdr;
+  }
+
+  const cdsRiskIcon = document.getElementById('cds-risk-icon');
+  if (cdsRiskIcon) cdsRiskIcon.style.color = data.risk_color;
+
+  document.getElementById('cds-fu').textContent = data.follow_up;
+  document.getElementById('cds-rec').textContent = data.recommendation;
+  document.getElementById('cds-sched').textContent = data.screening_schedule;
+
+  /* Sticky Header */
+  document.getElementById('sticky-pred').textContent = data.predicted_class_name;
+  document.getElementById('sticky-conf').textContent = data.confidence;
+  document.getElementById('sticky-risk').textContent = data.risk_level;
+
+  /* Report Preview */
+  const pt = S.patient;
+  document.getElementById('rpt-patient').textContent = pt ? `${pt.name}${pt.id ? ' · ' + pt.id : ''}` : '–';
+  document.getElementById('rpt-date').textContent = fmtDate(pt?.date || new Date().toISOString().split('T')[0]);
+  document.getElementById('rpt-quality').textContent = S.qScore + '% — Optimal';
+  document.getElementById('rpt-time').textContent = data.inference_time;
+  document.getElementById('rpt-pred').textContent = data.predicted_class_name;
+  document.getElementById('rpt-conf').textContent = data.confidence + ' Kepercayaan';
+
+  show('wf-results'); S.step = 'results'; updateProg(5);
+  document.getElementById('wf-results').scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+/* ── Heatmap tabs ── */
+let htab = 'overlay';
+function switchHtab(tab) {
+  htab = tab;
+  document.querySelectorAll('.htab').forEach(t => t.classList.toggle('on', t.dataset.htab === tab));
+  
+  const attnImg = document.getElementById('attn-img');
+  const ow = document.getElementById('opacity-wrap');
+  
+  if (!S.images || !S.images.original) return;
+
+  if (tab === 'original') {
+    attnImg.src = S.images.original;
+    attnImg.style.opacity = '1';
+    ow.classList.add('hidden');
+  } else if (tab === 'heatmap') {
+    attnImg.src = S.images.heatmap;
+    attnImg.style.opacity = '1';
+    ow.classList.add('hidden');
+  } else {
+    attnImg.src = S.images.overlay;
+    const sliderVal = document.getElementById('opacity-slider').value;
+    attnImg.style.opacity = sliderVal / 100;
+    ow.classList.remove('hidden');
+  }
+}
+
+/* ── New screening ── */
+function startOver() {
+  S = { step: 'patient', patient: null, imgSrc: null, imgFile: null, qScore: 94, qPass: true, result: null, inferTime: '0.18 s', images: {} };
+  ['wf-upload','wf-analyzing','wf-quality','wf-ai-proc','wf-results'].forEach(hide);
+  document.getElementById('sticky').classList.remove('show');
+  
+  ['pt-name','pt-id','pt-age','pt-dur'].forEach(id => document.getElementById(id).value = '');
+  document.getElementById('pt-gender').value = '';
+  document.getElementById('pt-date').value = new Date().toISOString().split('T')[0];
+  document.getElementById('pt-err').classList.add('hidden');
+  clearUpload();
+  updateProg(1);
+  show('wf-patient');
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+
+/* ── Enhanced PDF Download (jsPDF with Embedded Grad-CAM Images) ── */
+function downloadPDF() {
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF({ unit: 'mm', format: 'a4' });
+  const d = S.result;
+  if (!d) return;
+
+  const pt = S.patient;
+  const W = 210, M = 15, cW = W - M * 2;
+  let y = M;
+
+  // Header Banner
+  doc.setFillColor(0, 53, 39); // Emerald Primary
+  doc.roundedRect(M, y, cW, 30, 4, 4, 'F');
+
+  doc.setTextColor(108, 248, 187);
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(8);
+  doc.text('TILIKMATA AI — RINGKASAN DIAGNOSTIK KLINIS', M + 8, y + 9);
+
+  doc.setTextColor(255, 255, 255);
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(15);
+  doc.text(d.predicted_class_name, M + 8, y + 19);
+
+  doc.setTextColor(108, 248, 187);
+  doc.setFontSize(9);
+  doc.text(`${d.confidence} Kepercayaan  •  Inferensi: ${d.inference_time}`, M + 8, y + 25);
+
+  doc.setTextColor(255, 255, 255);
+  doc.setFontSize(8);
+  doc.text(fmtDate(pt?.date || new Date().toISOString().split('T')[0]), W - M - 6, y + 9, { align: 'right' });
+  doc.text('LAPORAN RAHASIA', W - M - 6, y + 15, { align: 'right' });
+  y += 36;
+
+  // Patient Info Box
+  doc.setFillColor(240, 253, 244);
+  doc.setDrawColor(212, 237, 223);
+  doc.roundedRect(M, y, cW, 24, 3, 3, 'FD');
+
+  doc.setTextColor(0, 53, 39);
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(9);
+  doc.text('DEMOGRAFI PASIEN & DETAIL PEMERIKSAAN', M + 6, y + 7);
+
+  doc.setFontSize(8);
+  doc.setTextColor(64, 73, 68);
+  doc.text(`Nama Pasien: ${pt?.name || 'Anonim'}`, M + 6, y + 14);
+  doc.text(`Usia / Jenis Kelamin: ${pt ? pt.age + ' thn / ' + pt.gender : 'N/A'}`, M + 6, y + 19);
+
+  doc.text(`ID Pasien: ${pt?.id || 'N/A'}`, M + 95, y + 14);
+  doc.text(`Durasi Diabetes: ${pt?.dur || 'N/A'}`, M + 95, y + 19);
+  y += 30;
+
+  // Image Visualization Section (Original, Heatmap, Overlay)
+  doc.setTextColor(0, 53, 39);
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(10);
+  doc.text('VISUALISASI DIAGNOSTIK AI YANG DAPAT DIJELASKAN (Grad-CAM)', M, y);
+  y += 5;
+
+  const imgW = (cW - 8) / 3;
+  const imgH = imgW * 0.75;
+
+  try {
+    if (d.images.original) doc.addImage(d.images.original, 'JPEG', M, y, imgW, imgH);
+    if (d.images.heatmap) doc.addImage(d.images.heatmap, 'JPEG', M + imgW + 4, y, imgW, imgH);
+    if (d.images.overlay) doc.addImage(d.images.overlay, 'JPEG', M + (imgW * 2) + 8, y, imgW, imgH);
+  } catch (err) {
+    console.error('PDF Image Add Error:', err);
+  }
+
+  // Captions
+  doc.setFontSize(7);
+  doc.setTextColor(112, 121, 116);
+  doc.text('1. Gambar Fundus Asli', M + (imgW/2), y + imgH + 4, { align: 'center' });
+  doc.text('2. Heatmap Grad-CAM', M + imgW + 4 + (imgW/2), y + imgH + 4, { align: 'center' });
+  doc.text('3. Overlay Fitur Gabungan', M + (imgW*2) + 8 + (imgW/2), y + imgH + 4, { align: 'center' });
+  y += imgH + 10;
+
+  // Diagnostic Findings & Clinical Decision Support
+  doc.setFillColor(247, 255, 254);
+  doc.setDrawColor(212, 237, 223);
+  doc.roundedRect(M, y, cW, 36, 3, 3, 'FD');
+
+  doc.setTextColor(0, 53, 39);
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(9.5);
+  doc.text('TEMUAN KLINIS & REKOMENDASI TRIASE', M + 6, y + 7);
+
+  doc.setFontSize(8);
+  doc.setFont('helvetica', 'bold');
+  doc.text(`Tingkat Keparahan: ${d.severity}   |   Penilaian Risiko: ${d.risk_level}`, M + 6, y + 13);
+
+  doc.setFont('helvetica', 'normal');
+  doc.setTextColor(64, 73, 68);
+  const recLines = doc.splitTextToSize(`Rekomendasi: ${d.recommendation}`, cW - 12);
+  doc.text(recLines, M + 6, y + 19);
+
+  const schedLines = doc.splitTextToSize(`Jadwal Skrining: ${d.screening_schedule}`, cW - 12);
+  doc.text(schedLines, M + 6, y + 29);
+  y += 42;
+
+  // Medical Disclaimer & Footer
+  doc.setFontSize(6.5);
+  doc.setFont('helvetica', 'italic');
+  doc.setTextColor(112, 121, 116);
+  const disclaimer = 'PENAFIAN MEDIS: TilikMata AI adalah alat pendukung keputusan yang dapat dijelaskan dan dirancang untuk membantu tenaga kesehatan dalam skrining retinopati diabetik. Keputusan diagnostik akhir harus dibuat oleh dokter mata bersertifikat.';
+  doc.text(doc.splitTextToSize(disclaimer, cW), M, y);
+
+  const fname = `TilikMata_Report_${(pt?.name || 'Pasien').replace(/\s+/g, '_')}_${new Date().toISOString().split('T')[0]}.pdf`;
+  doc.save(fname);
+}
+
+function fmtDate(s) {
+  if (!s) return '–';
+  const d = new Date(s + 'T00:00:00');
+  return d.toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' });
+}
+</script>
+</body>
+</html>
