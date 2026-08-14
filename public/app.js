@@ -310,19 +310,31 @@ function initScreeningWorkspace() {
   }
 }
 
+
+let currentUploadedFile = null;
+let currentAIResult = null;
+
 function handleUserUploadedImage(file) {
+  currentUploadedFile = file;
+
   const reader = new FileReader();
+
   reader.onload = (e) => {
     currentUploadedImageDataUrl = e.target.result;
+
     currentScreeningSample = {
       title: `Uploaded Image (${file.name})`,
-      desc: "Analyzed custom user uploaded fundus photograph.",
+      desc: "Gambar fundus berhasil diunggah.",
       img: currentUploadedImageDataUrl,
-      chars: ["Microaneurysms detected", "Retinal leakage check pass"]
+      chars: []
     };
-    updateScreeningPreview(currentUploadedImageDataUrl, currentScreeningSample);
-    runScreeningAnalysis();
+
+    updateScreeningPreview(
+      currentUploadedImageDataUrl,
+      currentScreeningSample
+    );
   };
+
   reader.readAsDataURL(file);
 }
 
@@ -339,33 +351,68 @@ function updateScreeningPreview(imgSrc, sampleData) {
   }
 }
 
-function runScreeningAnalysis() {
+async function runScreeningAnalysis() {
   const scannerBeam = document.getElementById('screening-scanner-beam');
   const statusBadge = document.getElementById('screening-status-badge');
   const progressBar = document.getElementById('screening-progress-bar');
   const progressText = document.getElementById('screening-progress-text');
 
-  if (!scannerBeam) return;
+  if (!currentUploadedFile) {
+    alert('Silakan upload gambar fundus terlebih dahulu.');
+    return;
+  }
 
-  scannerBeam.classList.add('scanning');
-  if (statusBadge) statusBadge.innerText = 'AI Inference Running...';
-  if (progressBar) progressBar.style.width = '25%';
+  try {
+    scannerBeam?.classList.add('scanning');
 
-  setTimeout(() => {
-    if (progressBar) progressBar.style.width = '65%';
-    if (progressText) progressText.innerText = 'Pemeriksaan Kualitas Lulus (98%) • Ekstraksi Fitur...';
-  }, 800);
+    if (statusBadge) {
+      statusBadge.innerText = 'AI Inference Running...';
+    }
 
-  setTimeout(() => {
-    if (progressBar) progressBar.style.width = '100%';
-    if (progressText) progressText.innerText = 'Analisis Selesai (100%)';
-    scannerBeam.classList.remove('scanning');
+    if (progressBar) {
+      progressBar.style.width = '25%';
+    }
 
-    const workspaceCanvas = document.getElementById('screening-heatmap-canvas');
-    if (workspaceCanvas) workspaceCanvas.classList.add('active');
+    if (progressText) {
+      progressText.innerText = 'Mengirim gambar ke AI...';
+    }
 
-    renderAnalysisResults(currentScreeningSample);
-  }, 1800);
+    const formData = new FormData();
+    formData.append('file', currentUploadedFile);
+
+    const response = await fetch('/api/predict', {
+      method: 'POST',
+      body: formData
+    });
+
+    const result = await response.json();
+
+    if (!response.ok || !result.success) {
+      throw new Error(result.error || 'Prediction gagal.');
+    }
+
+    if (progressBar) {
+      progressBar.style.width = '100%';
+    }
+
+    if (progressText) {
+      progressText.innerText =
+        `Analisis selesai • ${result.inference_time}`;
+    }
+
+    renderAIResults(result);
+
+  } catch (error) {
+    console.error(error);
+
+    alert(
+      'Koneksi atau proses AI gagal:\n' +
+      error.message
+    );
+
+  } finally {
+    scannerBeam?.classList.remove('scanning');
+  }
 }
 
 function renderAnalysisResults(sample) {
@@ -477,4 +524,64 @@ function downloadDiagnosticReport() {
   `;
   printWindow.document.write(reportHtml);
   printWindow.document.close();
+}
+
+
+
+// PERBAIKANNNNN
+function renderAIResults(result) {
+  currentAIResult = result;
+
+  const gradeElem =
+    document.getElementById('res-dr-grade');
+
+  const visualElem =
+    document.getElementById('res-visual-features');
+
+  const recElem =
+    document.getElementById('res-recommendation');
+
+  if (gradeElem) {
+    gradeElem.innerText = result.predicted_class_name;
+  }
+
+  if (visualElem) {
+    visualElem.innerText = result.clinical_desc;
+  }
+
+  if (recElem) {
+    recElem.innerText = result.recommendation;
+  }
+
+  // Update fundus image
+  const previewImg =
+    document.getElementById('screening-fundus-img');
+
+  if (previewImg && result.images?.original) {
+    previewImg.src = result.images.original;
+  }
+
+  // Update heatmap
+  const heatmapCanvas =
+    document.getElementById('screening-heatmap-canvas');
+
+  if (heatmapCanvas && result.images?.overlay) {
+    heatmapCanvas.style.backgroundImage =
+      `url("${result.images.overlay}")`;
+
+    heatmapCanvas.style.backgroundSize = 'cover';
+    heatmapCanvas.style.backgroundPosition = 'center';
+  }
+
+  // Quality
+  const qualityScore = result.quality?.score;
+
+  const qualityElem =
+    document.getElementById('res-quality-score');
+
+  if (qualityElem && qualityScore !== undefined) {
+    qualityElem.innerText = `${qualityScore}%`;
+  }
+
+  console.log('AI RESULT:', result);
 }

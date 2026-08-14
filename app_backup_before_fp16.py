@@ -206,265 +206,22 @@ print("[TilikMata AI] Initializing Models...")
 
 # 1. ONNX Runtime Session
 try:
-    onnx_session = ort.InferenceSession(
-        MODEL_ONNX_PATH,
-        providers=["CPUExecutionProvider"]
-    )
-
-    input_info = onnx_session.get_inputs()[0]
-    output_info = onnx_session.get_outputs()[0]
-
-    print(
-        f"[TilikMata AI] ONNX FP16 Model loaded successfully from "
-        f"{MODEL_ONNX_PATH}"
-    )
-
-    print(
-        f"[TilikMata AI] Input: "
-        f"{input_info.name} | "
-        f"{input_info.shape} | "
-        f"{input_info.type}"
-    )
-
-    print(
-        f"[TilikMata AI] Output: "
-        f"{output_info.name} | "
-        f"{output_info.shape} | "
-        f"{output_info.type}"
-    )
-
+    onnx_session = ort.InferenceSession(MODEL_ONNX_PATH)
+    print(f"[TilikMata AI] ONNX Model loaded successfully from {MODEL_ONNX_PATH}")
 except Exception as e:
     print(f"[TilikMata AI] Warning loading ONNX model: {e}")
     onnx_session = None
 
-
-# 2. PyTorch Grad-CAM
-# ---------------------------------------------------------
-# PyTorch digunakan KHUSUS untuk Grad-CAM/XAI.
-# Prediction utama tetap menggunakan ONNX FP16.
-# ---------------------------------------------------------
-
-PYTORCH_MODEL_PATH = os.path.join(
-    BASE_DIR,
-    "Model",
-    "final_repvit_m1_simple.pt"
-)
-
-pytorch_model = None
-grad_cam_engine = None
-
-
-def load_pytorch_gradcam_model():
-    global pytorch_model
-
-    try:
-        print("[TilikMata AI] Loading PyTorch model for Grad-CAM...")
-
-        # Buat arsitektur RepViT yang SAMA dengan saat training
-        pytorch_model = timm.create_model(
-            "repvit_m1.dist_in1k",
-            pretrained=False,
-            num_classes=7
-        )
-
-        # Load checkpoint
-        checkpoint = torch.load(
-            PYTORCH_MODEL_PATH,
-            map_location="cpu"
-        )
-
-        state_dict = checkpoint["model_state_dict"]
-
-        # Load bobot hasil training
-        missing_keys, unexpected_keys = pytorch_model.load_state_dict(
-            state_dict,
-            strict=False
-        )
-
-        if missing_keys:
-            print(
-                "[TilikMata AI] Warning - Missing keys:",
-                len(missing_keys)
-            )
-
-        if unexpected_keys:
-            print(
-                "[TilikMata AI] Warning - Unexpected keys:",
-                len(unexpected_keys)
-            )
-
-        pytorch_model.eval()
-
-        print(
-            "[TilikMata AI] PyTorch RepViT loaded successfully "
-            "for Grad-CAM."
-        )
-
-        return pytorch_model
-
-    except Exception as e:
-        print(
-            f"[TilikMata AI] Warning loading PyTorch Grad-CAM model: {e}"
-        )
-        pytorch_model = None
-        return None
-
-
-# Load PyTorch model
-pytorch_model = load_pytorch_gradcam_model()
-
-
-# ---------------------------------------------------------
-# Grad-CAM Engine
-# ---------------------------------------------------------
-
-class RepViTGradCAM:
-    def __init__(self, model):
-        self.model = model
-        self.model.eval()
-
-        self.feature_map = None
-        self.gradient = None
-
-        # Stage terakhir menghasilkan spatial feature map
-        self.target_layer = self.model.stages[-1]
-
-        self.target_layer.register_forward_hook(
-            self.save_feature_map
-        )
-
-        self.target_layer.register_full_backward_hook(
-            self.save_gradient
-        )
-
-        print(
-            "[TilikMata AI] Grad-CAM target layer: stages[-1]"
-        )
-
-    def save_feature_map(self, module, input, output):
-        self.feature_map = output
-
-    def save_gradient(self, module, grad_input, grad_output):
-        self.gradient = grad_output[0]
-
-    def generate(self, input_tensor, target_class=None):
-
-        self.model.zero_grad(set_to_none=True)
-
-        # Pastikan gradient aktif
-        input_tensor = input_tensor.clone().detach()
-        input_tensor.requires_grad_(True)
-
-        # Forward
-        logits = self.model(input_tensor)
-
-        # RepViT menghasilkan logits 7 kelas
-        if target_class is None:
-            target_class = int(
-                torch.argmax(logits, dim=1).item()
-            )
-
-        # Ambil score kelas target
-        score = logits[0, target_class]
-
-        # Backward
-        score.backward()
-
-        # Pastikan hook mendapatkan activation
-        if self.feature_map is None:
-            raise RuntimeError(
-                "Grad-CAM feature map tidak berhasil diperoleh."
-            )
-
-        if self.gradient is None:
-            raise RuntimeError(
-                "Grad-CAM gradient tidak berhasil diperoleh."
-            )
-
-        # -------------------------------------------------
-        # Extract feature & gradient
-        # -------------------------------------------------
-
-        features = self.feature_map[0]
-        gradients = self.gradient[0]
-
-        # Expected:
-        # [C, H, W]
-        if features.ndim != 3:
-            raise RuntimeError(
-                f"Unexpected feature shape: {features.shape}"
-            )
-
-        if gradients.ndim != 3:
-            raise RuntimeError(
-                f"Unexpected gradient shape: {gradients.shape}"
-            )
-
-        # -------------------------------------------------
-        # Grad-CAM weighting
-        # -------------------------------------------------
-
-        # Global Average Pooling pada gradient
-        weights = gradients.mean(
-            dim=(1, 2)
-        )
-
-        # Weighted sum of activation maps
-        cam = torch.sum(
-            weights[:, None, None] * features,
-            dim=0
-        )
-
-        # ReLU
-        cam = F.relu(cam)
-
-        # Convert ke numpy
-        cam = cam.detach().cpu().numpy()
-
-        # Normalize
-        cam_min = cam.min()
-        cam_max = cam.max()
-
-        if cam_max > cam_min:
-            cam = (
-                cam - cam_min
-            ) / (
-                cam_max - cam_min
-            )
-        else:
-            cam = np.zeros_like(cam)
-
-        # Probabilities
-        probs = F.softmax(
-            logits.detach(),
-            dim=1
-        ).cpu().numpy()[0]
-
-        return cam.astype(np.float32), target_class, probs
-
-
-# Create Grad-CAM engine
-if pytorch_model is not None:
-    try:
-        grad_cam_engine = RepViTGradCAM(
-            pytorch_model
-        )
-
-        print(
-            "[TilikMata AI] Grad-CAM initialized successfully."
-        )
-
-    except Exception as e:
-        print(
-            f"[TilikMata AI] Warning initializing Grad-CAM: {e}"
-        )
-        grad_cam_engine = None
-
-else:
-    print(
-        "[TilikMata AI] Grad-CAM unavailable because "
-        "PyTorch model failed to load."
-    )
+# 2. PyTorch Model for Grad-CAM
+try:
+    # pytorch_model = timm.create_model("repvit_m1.dist_in1k", pretrained=True, num_classes=7)
+    pytorch_model.eval()
+    grad_cam_engine = RepViTGradCAM(pytorch_model)
+    print("[TilikMata AI] PyTorch Grad-CAM Engine initialized.")
+except Exception as e:
+    print(f"[TilikMata AI] Warning loading PyTorch model: {e}")
+    pytorch_model = None
+    grad_cam_engine = None
 
 # Helper to encode CV2 image (BGR) to base64 data URL
 def bgr_to_base64(bgr_img):
@@ -512,21 +269,17 @@ def predict():
         orig_bgr = cv2.cvtColor(img_np, cv2.COLOR_RGB2BGR)
 
         # Transform image for PyTorch / ONNX
-
         pil_enhanced = Image.fromarray(enhanced_rgb)
-        tensor_img = eval_transform(pil_enhanced).unsqueeze(0)
-
-        # ONNX FP16 membutuhkan input float16
-        tensor_img_fp16 = tensor_img.numpy().astype(np.float16)
-        
+        tensor_img = eval_transform(pil_enhanced).unsqueeze(0) # (1, 3, 384, 384)
 
         # Run ONNX inference if available, otherwise PyTorch
         if onnx_session is not None:
             input_name = onnx_session.get_inputs()[0].name
 
+            # batas atas
             logits = onnx_session.run(
                 None,
-                {input_name: tensor_img_fp16}
+                {input_name: tensor_img.numpy()}
             )[0]
 
             logits = logits.astype(np.float32)
@@ -554,68 +307,15 @@ def predict():
         else:
             return jsonify({"success": False, "error": "No inference engine available"}), 500
 
-        # ---------------------------------------------------------
-        # Grad-CAM
-        # ---------------------------------------------------------
-
+        # Generate Grad-CAM heatmap
         if grad_cam_engine is not None:
-
-            try:
-                cam_map, cam_class, cam_probs = grad_cam_engine.generate(
-                    tensor_img,
-                    target_class=pred_idx
-                )
-
-                print(
-                    f"[TilikMata AI] Grad-CAM generated "
-                    f"for class {pred_idx}"
-                )
-
-            except Exception as cam_error:
-
-                print(
-                    f"[TilikMata AI] Grad-CAM error: {cam_error}"
-                )
-
-                # Fallback jika Grad-CAM gagal
-                cam_map = np.zeros(
-                    (12, 12),
-                    dtype=np.float32
-                )
-
+            cam_map, _, _ = grad_cam_engine.generate(tensor_img.clone(), target_class=pred_idx)
         else:
-
-            print(
-                "[TilikMata AI] Grad-CAM engine unavailable."
-            )
-
-            cam_map = np.zeros(
-                (12, 12),
-                dtype=np.float32
-            )
+            cam_map = np.zeros((12, 12), dtype=np.float32)
 
         # Resize CAM map to 384x384
-        cam_resized = cv2.resize(
-            cam_map,
-            (384, 384),
-            interpolation=cv2.INTER_CUBIC
-        )
-
-        cam_resized = cv2.GaussianBlur(
-            cam_resized,
-            (0, 0),
-            sigmaX=3
-        )
-
-        cam_resized = np.clip(
-            cam_resized,
-            0,
-            1
-        )
-
-        cam_uint8 = np.uint8(
-            255 * cam_resized
-        )
+        cam_resized = cv2.resize(cam_map, (384, 384), interpolation=cv2.INTER_CUBIC)
+        cam_uint8 = np.uint8(255 * cam_resized)
         
         # Standalone Heatmap (JET colormap)
         heatmap_bgr = cv2.applyColorMap(cam_uint8, cv2.COLORMAP_JET)
