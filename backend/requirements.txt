@@ -6,3 +6,5 @@ onnxruntime
 torch
 torchvision
 timm
+flask-cors
+gunicorn

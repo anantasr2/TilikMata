@@ -1,0 +1,25 @@
+# Vercel
+.vercel/
+
+# Python virtual environment
+.venv/
+venv/
+env/
+
+# Python cache
+__pycache__/
+*.py[cod]
+
+# macOS
+.DS_Store
+
+# Environment variables
+.env
+.env.*
+
+# Node
+node_modules/
+
+# Build
+dist/
+build/

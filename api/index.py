@@ -12,7 +12,14 @@ import torch.nn.functional as F
 import timm
 from torchvision import transforms
 
-app = Flask(__name__, static_folder="public", static_url_path="")
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+PUBLIC_DIR = os.path.join(BASE_DIR, "public")
+
+app = Flask(
+    __name__,
+    static_folder=PUBLIC_DIR,
+    static_url_path=""
+)
 
 # ---------------------------------------------------------
 # DR Metadata Dictionary (7 Classes - Sorted alphabetically)
@@ -195,8 +202,16 @@ class RepViTGradCAM:
 # ---------------------------------------------------------
 # Global Model Loading
 # ---------------------------------------------------------
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-PUBLIC_DIR = os.path.join(BASE_DIR, "public")
+BASE_DIR = os.path.dirname(
+    os.path.dirname(os.path.abspath(__file__))
+)
+
+PUBLIC_DIR = os.path.join(
+    BASE_DIR,
+    "public"
+)
+
+
 MODEL_ONNX_PATH = os.path.join(
     BASE_DIR,
     "Model",
@@ -327,7 +342,7 @@ class RepViTGradCAM:
         self.gradient = None
 
         # Stage terakhir menghasilkan spatial feature map
-        self.target_layer = self.model.stages[-1]
+        self.target_layer = self.model.stages[-1].blocks[-1]
 
         self.target_layer.register_forward_hook(
             self.save_feature_map
@@ -421,6 +436,14 @@ class RepViTGradCAM:
         # Convert ke numpy
         cam = cam.detach().cpu().numpy()
 
+        print(
+            f"[Grad-CAM DEBUG] raw CAM | "
+            f"shape={cam.shape} | "
+            f"min={cam.min():.8f} | "
+            f"max={cam.max():.8f} | "
+            f"mean={cam.mean():.8f}"
+        )
+
         # Normalize
         cam_min = cam.min()
         cam_max = cam.max()
@@ -433,6 +456,13 @@ class RepViTGradCAM:
             )
         else:
             cam = np.zeros_like(cam)
+
+        print(
+            f"[Grad-CAM DEBUG] normalized CAM | "
+            f"min={cam.min():.8f} | "
+            f"max={cam.max():.8f} | "
+            f"mean={cam.mean():.8f}"
+        )
 
         # Probabilities
         probs = F.softmax(
