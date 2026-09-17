@@ -169,26 +169,27 @@ Dataset digunakan untuk proses pengembangan dan evaluasi model dalam penelitian 
 
 ## 📁 Project Structure
 
-Struktur project dapat disesuaikan dengan repository yang digunakan.
-
 ```text
-TilikMata/
+TilikMata-Gemastik/
 │
-├── frontend/
-│   ├── ...
-│   └── ...
+├── api/                    # API endpoint untuk deployment
 │
 ├── backend/
-│   ├── ...
-│   └── ...
+│   ├── Model/              # Model AI / ONNX
+│   ├── app.py              # Flask backend
+│   ├── requirements.txt    # Python dependencies
+│   └── .python-version     # Python version
 │
-├── model/
-│   ├── ...
-│   └── ...
+├── frontend/
+│   ├── assets/             # Asset frontend
+│   ├── app.js              # Frontend JavaScript
+│   ├── index.html          # Landing page
+│   ├── screening.html      # Screening page
+│   └── styles.css          # Styling
 │
-├── README.md
-└── ...
-```
+├── .gitignore
+├── vercel.json             # Vercel configuration
+└── README.md
 
 ---
 
